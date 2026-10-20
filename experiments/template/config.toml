@@ -1,0 +1,28 @@
+# Один эксперимент = один файл. Меняй значения здесь, base.toml не трогай.
+include = "../../configs/base.toml"
+
+[experiment]
+name = "template"
+strategy = "swarm"
+
+[limits]
+orchestrator_tokens_per_task = 8192     # токенов оркестратора на задачу
+orchestrator_tokens_per_turn = 2048     # токенов оркестратора за ход
+subagent_tokens_per_task = 4096         # токенов на каждого субагента за задачу
+subagent_tokens_per_step = 1024         # токенов на шаг субагента
+total_tokens_per_task = 32768           # суммарный лимит на задачу
+final_answer_reserve = 512              # резерв под финальный ответ
+max_turns = 15                          # ходов оркестратора
+max_tool_calls_per_turn = 8             # вызовов инструментов за ход
+subagent_max_steps = 10                 # шагов одного субагента
+max_subagents_per_task = 8              # субагентов за задачу
+max_parallel = 8                        # параллельных субагентов
+
+[training]
+total_steps = 100                       # шагов обучения
+lr = 5e-6                               # скорость обучения
+rollout_n = 4                           # эпизодов на задачу
+train_batch_size = 16                   # задач в батче
+ppo_mini_batch_size = 8                 # мини-батч PPO
+max_context_tokens = 16384              # максимум контекста
+loggers = ["console", "wandb"]          # логгеры метрик

@@ -1,0 +1,121 @@
+# Базовая конфигурация. Общие значения для всех экспериментов.
+# Эксперимент подключает этот файл через include и меняет только свои значения.
+# [experiment] здесь не задаётся: имя и стратегия - в файле эксперимента.
+
+[limits]
+# Лимит токенов оркестратора на одну задачу; закомментировано = без лимита (None).
+# orchestrator_tokens_per_task = 8192
+orchestrator_tokens_per_turn = 2048     # токенов генерации оркестратора за один ход
+# subagent_tokens_per_task = 4096       # лимит на каждого субагента за задачу; закомментировано = без лимита
+subagent_tokens_per_step = 1024         # токенов на один шаг субагента
+# total_tokens_per_task = 32768         # суммарный лимит (оркестратор + субагенты); закомментировано = без лимита
+final_answer_reserve = 512              # токенов, зарезервированных под финальный ответ
+max_turns = 15                          # максимум ходов оркестратора
+max_tool_calls_per_turn = 8             # максимум вызовов инструментов за ход
+subagent_max_steps = 10                 # максимум шагов одного субагента
+max_subagents_per_task = 8              # максимум созданных субагентов за задачу
+max_parallel = 8                        # максимум параллельных субагентов
+
+[orchestrator]
+model_path = "Qwen/Qwen3.5-2B"          # путь или id весов обучаемого оркестратора
+eval_base_url = "http://127.0.0.1:18000/v1"  # OpenAI-совместимый адрес vLLM для оценки
+eval_model = "orchestrator"             # имя модели в vLLM
+api_key_env = ""                        # имя переменной окружения с ключом; пусто = без ключа
+temperature = 1.0                       # температура сэмплирования при обучении
+eval_temperature = 0.0                  # температура при оценке
+top_p = 1.0                             # top-p сэмплирования
+enable_thinking = true                  # включить режим рассуждений модели
+timeout_seconds = 300.0                 # таймаут одного запроса, секунды
+max_retries = 3                         # повторы запроса при ошибке
+
+[subagents]
+base_url = "https://openrouter.ai/api/v1"  # API замороженных субагентов
+api_key_env = "OPENROUTER_API_KEY"      # имя переменной окружения с ключом
+prompts_path = "configs/subagent_prompts.toml"  # файл системных промптов ролей (от корня проекта)
+temperature = 0.0                       # температура субагентов
+top_p = 1.0                             # top-p субагентов
+timeout_seconds = 180.0                 # таймаут одного запроса субагента, секунды
+max_retries = 4                         # повторы запроса субагента
+max_concurrency = 64                    # максимум одновременных запросов субагентов
+return_max_chars = 2000                 # сколько символов ответа субагента вернуть оркестратору
+extra_body = {}                         # дополнительные поля тела запроса провайдера
+
+[subagents.models]
+# алиас = id модели у провайдера; алиасы: строчные латинские буквы, цифры и "_"
+# все ≤9B, на OpenRouter, поддерживают tools
+small  = "mistralai/ministral-3b-2512"
+medium = "qwen/qwen-2.5-7b-instruct"
+large  = "qwen/qwen3.5-9b"
+
+[judge]
+base_url = "https://openrouter.ai/api/v1"  # API судьи
+model = "qwen/qwen3.5-9b"               # модель судьи; replace with any OpenRouter model
+api_key_env = "OPENROUTER_API_KEY"      # имя переменной окружения с ключом
+temperature = 0.0                       # температура судьи
+max_tokens = 2048                       # максимум токенов ответа судьи
+timeout_seconds = 120.0                 # таймаут запроса судьи, секунды
+max_retries = 5                         # повторы запроса судьи
+extra_body = {}                         # дополнительные поля тела запроса провайдера
+
+[embedding]
+base_url = "https://openrouter.ai/api/v1"  # API эмбеддингов запросов
+model = "qwen/qwen3-embedding-8b"       # должна совпадать с retrieval.index_variant (сравнение без учёта регистра и префикса провайдера)
+api_key_env = "OPENROUTER_API_KEY"      # имя переменной окружения с ключом
+timeout_seconds = 60.0                  # таймаут запроса эмбеддинга, секунды
+max_retries = 3                         # повторы запроса эмбеддинга
+
+[retrieval]
+# Поиск выполняет отдельный сервер (python -m orchestrator_research.adapters.retrieval_server);
+# агенты ходят к нему по HTTP, поэтому индекс грузится один раз, а не в каждом роллауте.
+server_url = "http://127.0.0.1:18100"    # адрес retrieval-сервера
+timeout_seconds = 30.0                  # таймаут одного запроса поиска, секунды
+max_retries = 3                         # повторы при сетевой ошибке или 5xx/429 сервера
+index_repo_id = "Tevatron/browsecomp-plus-indexes"  # репозиторий HF с предпостроенным индексом
+index_revision = "main"                 # ревизия индекса; заменить на закреплённый commit
+index_variant = "qwen3-embedding-8b"    # один из: qwen3-embedding-0.6b / 4b / 8b
+index_path = "~/data/browsecomp_index/qwen3-embedding-8b"  # локальный путь к индексу
+corpus_repo_id = "Tevatron/browsecomp-plus-corpus"  # репозиторий HF с корпусом документов
+corpus_revision = "main"                # ревизия корпуса; заменить на закреплённый commit
+top_k = 5                               # сколько документов возвращает поиск
+snippet_tokens = 512                    # длина сниппета в токенах
+snippet_tokenizer = "Qwen/Qwen3-0.6B"   # токенизатор для обрезки сниппетов
+
+[benchmark]
+repo_id = "Tevatron/browsecomp-plus"    # репозиторий HF с вопросами бенчмарка
+revision = "main"                       # ревизия датасета; заменить на закреплённый commit
+expected_rows = 830                     # ожидаемое число строк; проверка при загрузке
+data_dir = "~/data/orchestrator_research/browsecomp"  # локальная папка данных
+
+[reward]
+lambda_parallel = 0.1                   # вес награды за параллельность субагентов
+lambda_finish = 0.05                    # вес награды за досрочное завершение
+anneal_steps = 7                        # шагов отжига весов наград (> 0)
+anneal_mode = "linear"                  # форма отжига: linear или cosine
+r_parallel_mode = "fraction_of_stages"  # способ расчёта награды за параллельность
+max_subagents_init = 8                  # начальное число субагентов для расчёта награды
+
+[training]
+total_steps = 100                       # число шагов обучения
+lr = 5e-6                               # скорость обучения
+rollout_n = 4                           # число эпизодов на одну задачу (>= 2)
+train_batch_size = 16                   # задач в одном батче обучения
+ppo_mini_batch_size = 8                 # мини-батч PPO; должен делить train_batch_size
+max_prompt_tokens = 4096                # максимум токенов промпта
+max_context_tokens = 24576              # максимум контекста; > max_prompt_tokens + бюджет оркестратора
+# доля от ВСЕЙ памяти GPU: 0.15×80 ГБ = 12 ГБ; vLLM при старте требует, чтобы столько было свободно
+rollout_gpu_memory_utilization = 0.15   # доля памяти GPU под vLLM при роллаутах (0 < x < 1)
+val_split = "val_test"                  # валидация: val_test или val_full
+val_before_train = true                 # валидировать до первого шага обучения
+test_freq = 10                          # частота валидации, в шагах
+save_freq = 10                          # частота сохранения чекпоинтов, в шагах
+k25_alpha = -0.2                        # параметр k2.5-награды alpha (< 0)
+k25_beta = 0.2                          # параметр k2.5-награды beta (> 0)
+k25_tau = 1e-3                          # параметр k2.5-награды tau (>= 0)
+loggers = ["console"]                   # куда писать метрики: console, wandb и т.д.
+project = "orchestrator-research"       # имя проекта для логгеров
+agent_concurrency = 64                  # максимум одновременных агентов в роллаутах
+rollout_timeout_seconds = 1800          # таймаут одного роллаута, секунды
+checkpoint_dir = "artifacts/checkpoints"  # папка чекпоинтов (от корня проекта)
+# сырые ключи verl/agl вида "a.b.c" = значение (запасной вариант). Ray на общем сервере ограничен:
+# 8 CPU и 4 ГБ под object store (по умолчанию Ray берёт все ядра и до 30% RAM).
+extra_overrides = { "ray_kwargs.ray_init.num_cpus" = 8, "ray_kwargs.ray_init.object_store_memory" = 4000000000 }

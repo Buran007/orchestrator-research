@@ -1,0 +1,83 @@
+# Smoke-тест 000: весь стек локально, на одной общей GPU (около 20 ГБ свободно), без внешних API.
+# Цель - проверить код (роллаут, судья, поиск, обучение без flash-attn), а не получить результат исследования.
+# Подробности, запуск и оценка памяти: experiments/000_smoke_local/README.md.
+include = "../../configs/base.toml"
+
+[experiment]
+name = "000_smoke_local"                # совпадает с именем каталога
+strategy = "swarm"
+
+[orchestrator]
+# Обучаемый оркестратор - тот же маленький 0.8B, что и субагенты с судьёй.
+model_path = "Qwen/Qwen3.5-0.8B"
+
+[limits]
+# Маленькие лимиты: короткие задачи и быстрые роллауты.
+orchestrator_tokens_per_task = 2048     # токенов оркестратора на задачу
+orchestrator_tokens_per_turn = 512      # токенов оркестратора за ход
+subagent_tokens_per_task = 1024         # токенов на каждого субагента за задачу
+subagent_tokens_per_step = 256          # токенов на шаг субагента
+total_tokens_per_task = 6144            # суммарный лимит на задачу (оркестратор + субагенты)
+final_answer_reserve = 256              # токенов, зарезервированных под финальный ответ
+max_turns = 4                           # ходов оркестратора
+max_tool_calls_per_turn = 4             # вызовов инструментов за ход
+subagent_max_steps = 3                  # шагов одного субагента
+max_subagents_per_task = 2              # субагентов за задачу
+max_parallel = 2                        # параллельных субагентов
+
+[subagents]
+# Замороженные субагенты - локальный vLLM на порту 8001 (его поднимает scripts/services.sh).
+base_url = "http://127.0.0.1:18001/v1"
+api_key_env = ""                        # локальный сервер без ключа
+return_max_chars = 800                  # символов, которые субагент возвращает оркестратору
+# Контекст локального vLLM 8192 токенов; ограничиваем промпт субагента, чтобы он не переполнил окно.
+max_context_tokens = 8192
+
+# Все три алиаса указывают на одну модель: один локальный сервер обслуживает одну модель.
+# Таблица переопределяет базовую покомпонентно; заданы все три ключа, поэтому результат полный.
+[subagents.models]
+small = "Qwen/Qwen3.5-0.8B"
+medium = "Qwen/Qwen3.5-0.8B"
+large = "Qwen/Qwen3.5-0.8B"
+
+[judge]
+# Судья - та же локальная модель на том же сервере (порт 8001), без ключа.
+base_url = "http://127.0.0.1:18001/v1"
+model = "Qwen/Qwen3.5-0.8B"
+api_key_env = ""
+# Выключаем режим рассуждений: у 0.8B он съедает лимит ответа судьи и ответ не читается.
+extra_body = { chat_template_kwargs = { enable_thinking = false } }
+
+[embedding]
+# Локальный vLLM для эмбеддингов запроса (порт 8003); модель обязана совпадать с индексом.
+base_url = "http://127.0.0.1:18003/v1"
+model = "Qwen/Qwen3-Embedding-0.6B"
+api_key_env = ""
+
+[retrieval]
+# Индекс под Qwen3-Embedding-0.6B; путь - локальный, скачанный заранее.
+index_variant = "qwen3-embedding-0.6b"
+index_path = "~/data/browsecomp_index/qwen3-embedding-0.6b"
+# Короткие сниппеты и top_k: история оркестратора растёт быстро, а контекст сервера 8192 токена.
+top_k = 3
+snippet_tokens = 128
+
+[training]
+# Два шага, батч 2, rollout_n 2: проверяем код, а не качество.
+total_steps = 2
+rollout_n = 2
+train_batch_size = 2
+ppo_mini_batch_size = 2                 # должен делить train_batch_size
+max_prompt_tokens = 2048
+max_context_tokens = 8192               # > max_prompt_tokens + бюджет оркестратора (2048)
+# 0.08 x 80 ГБ ~ 6.4 ГБ под vLLM роллаутов; доля всей памяти карты.
+rollout_gpu_memory_utilization = 0.08
+loggers = ["console"]                   # без wandb: сеть не используется
+agent_concurrency = 4
+val_before_train = false                # валидация до обучения не нужна в смоуке
+test_freq = -1                          # -1 = валидация по ходу обучения выключена
+save_freq = -1                          # -1 = чекпоинты не сохраняются
+# Путь verl с flash-attn (собран на ext1): эти ключи идут ПОСЛЕ базовых значений и переопределяют их.
+# Ключи без префикса "+": OmegaConf создаёт их сам. Имена - как в verl; конкретные имена
+# проверяются только запуском train (dry-run их не проверяет).
+extra_overrides = { "actor_rollout_ref.actor.calculate_entropy" = false, "actor_rollout_ref.rollout.max_num_seqs" = 64, "actor_rollout_ref.rollout.max_num_batched_tokens" = 2048, "actor_rollout_ref.rollout.engine_kwargs.vllm.kv_cache_memory_bytes" = 3000000000 }  # flash-attn собран (ext1): обычный путь verl с fused kernels; энтропия не считается (entropy_coeff = 0), иначе softmax по логитам даёт OOM

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "orchestrator-research"
+version = "0.1.0"
+description = "Clean research implementation for reasoning-budget and orchestrator RL experiments"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.60,<3",
+  "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+benchmark = [
+  "datasets>=3.2,<5",
+  "pyarrow>=19,<22",  # pyarrow>=22 needs numpy>=2; verl 0.8.0 pins numpy<2
+  "faiss-cpu>=1.9,<2",
+  "huggingface-hub>=0.27,<2",
+  "numpy>=1.26,<3",
+  "transformers>=4.48,<6",
+]
+# server only (Linux + CUDA 12.9/13.0, Python>=3.12). vllm==0.22.0 and verl==0.8.0 are installed by
+# scripts/bootstrap_server.sh in two separate steps: their pins conflict (numpy>=2 vs numpy<2), as in agl setup_verl.sh.
+# flash-linear-attention: Triton kernels for Qwen3.5 gated delta net layers; without it transformers falls back to a
+# memory-hungry torch path and update_actor OOMed at 36k tokens (smoke 003/004 on ext1).
+train = ["agentlightning==1.0.2", "flash-linear-attention==0.5.2"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+orchestrator-research = "orchestrator_research.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrator_research"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
